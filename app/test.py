@@ -1,34 +1,96 @@
-# test_db_connection.py
-import logging
-from sqlalchemy import create_engine
-from sqlalchemy.exc import SQLAlchemyError
 import os
-from dotenv import load_dotenv
+import argparse
+import cv2
+import torch
+from torchvision import transforms
+from ultralytics import YOLO
+from tqdm import tqdm
 
-# Настройка логирования
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
-
-# Загрузка переменных окружения
-load_dotenv()
-
-# Получение DATABASE_URL
-DATABASE_URL = os.getenv("DATABASE_URL")
-
-# Логирование и проверка переменной
-if not DATABASE_URL:
-    logging.error("DATABASE_URL не найден в переменных окружения!")
-    exit(1)
-
-logging.info(f"Попытка подключения к базе данных с URL: {DATABASE_URL}")
-
-# Попытка подключения к базе данных
-try:
-    # Создание подключения к базе данных
-    engine = create_engine(DATABASE_URL)
+def process_and_detect(input_path, output_path, model_path, show_live=True):  # show_live=True по умолчанию
+    """Обрабатывает видео и применяет YOLO с отображением в реальном времени"""
+    if not os.path.exists(model_path):
+        raise FileNotFoundError(f"Файл модели не найден: {model_path}")
     
-    # Попытка выполнения простого запроса
-    with engine.connect() as connection:
-        logging.info("Подключение к базе данных успешно!")
-except SQLAlchemyError as e:
-    logging.error(f"Ошибка подключения к базе данных: {e}")
-    exit(1)
+    try:
+        model = YOLO(model_path)
+    except Exception as e:
+        raise RuntimeError(f"Ошибка загрузки модели: {str(e)}")
+
+    cap = cv2.VideoCapture(input_path)
+    if not cap.isOpened():
+        print(f"Ошибка: Не удалось открыть видео {input_path}")
+        return False
+
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+    # Инициализация VideoWriter (если output_path указан)
+    if output_path:
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        out = cv2.VideoWriter(output_path, fourcc, fps, (width, height), isColor=True)
+
+    preprocess = transforms.Compose([
+        transforms.ToPILImage(),
+        transforms.Resize((640, 640)),
+        transforms.ToTensor(),
+    ])
+
+    try:
+        for _ in tqdm(range(total_frames), desc="Обработка видео"):
+            ret, frame = cap.read()
+            if not ret:
+                break
+            
+            # 1. Предобработка
+            negative = 255 - frame
+            gray = cv2.cvtColor(negative, cv2.COLOR_BGR2GRAY)
+            gray_3ch = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+            
+            # 2. Детекция
+            results = model.predict(gray_3ch, imgsz=640, conf=0.5)
+            annotated_frame = results[0].plot()  # Автоматическая визуализация
+            
+            # Показываем результат
+            cv2.imshow("Live Detection", annotated_frame)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+                
+            # Сохраняем (если нужно)
+            if output_path:
+                out.write(annotated_frame)
+                
+    finally:
+        cap.release()
+        if output_path:
+            out.release()
+        cv2.destroyAllWindows()
+    return True
+
+def main():
+    parser = argparse.ArgumentParser(description='Детекция утечек с отображением в реальном времени')
+    parser.add_argument('--input', required=True, help='Путь к видеофайлу')
+    parser.add_argument('--output', help='Путь для сохранения (необязательно)')
+    parser.add_argument('--model', default='leak_detectorv0.1.pt', help='Путь к модели YOLO')
+    args = parser.parse_args()
+
+    # Проверка и нормализация путей
+    if not os.path.exists(args.input):
+        raise FileNotFoundError(f"Входной файл не найден: {args.input}")
+
+    if args.output:
+        os.makedirs(os.path.dirname(args.output) or '.', exist_ok=True)
+
+    print("\nЗапуск обработки с отображением в реальном времени...")
+    print("Нажмите 'q' для остановки")
+    
+    process_and_detect(
+        input_path=args.input,
+        output_path=args.output,
+        model_path=args.model,
+        show_live=True
+    )
+
+if __name__ == "__main__":
+    main()
