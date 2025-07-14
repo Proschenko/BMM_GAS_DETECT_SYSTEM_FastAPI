@@ -1,7 +1,9 @@
 # main.py
 import logging
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from .routes import router
 
 # Логирование
@@ -25,5 +27,6 @@ app.add_middleware(
 )
 
 app.include_router(router)
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 logging.info("FastAPI приложение успешно запущено.")

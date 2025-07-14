@@ -1,16 +1,35 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-from database import get_session
+import asyncio
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, WebSocket
+from fastapi.responses import JSONResponse
 from . import schemas as schemas
 from .import service as serv 
 
 router = APIRouter()
 
-@router.get("/labs", response_model=list[schemas.Laboratories])
-async def get_organization_wells(session: AsyncSession = Depends(get_session)):
+@router.post('/upload')
+async def upload_video(file: UploadFile = File(...)):
     try:
-        # Вызов функции из service.py для получения списка лабораторий 
-        labs_data = await serv.get_labs(session)
-        return labs_data
+        result = await serv.upload_video(file)
+        return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Ошибка при загрузке видео: {str(e)}")
+
+
+@router.websocket('/ws/{video_id}')
+async def websocket_endpoint(websocket: WebSocket, video_id: str):
+    await websocket.accept()
+    await websocket.send_text('ээ бля')
+
+    try:
+        for res in serv.process_file(video_id):
+            await websocket.send_text('ok')
+
+            await asyncio.sleep(1)  # Пауза 1 секунда
+            
+    except Exception as e:
+        await websocket.send({
+            "status": "error",
+            "description": f"{e}"
+        })
+    finally:
+        await websocket.close()

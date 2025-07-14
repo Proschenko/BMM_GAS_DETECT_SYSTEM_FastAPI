@@ -1,3 +1,4 @@
+import logging
 import os
 import argparse
 import cv2
@@ -6,7 +7,7 @@ from torchvision import transforms
 from ultralytics import YOLO
 from tqdm import tqdm
 
-def process_and_detect(input_path, output_path, model_path, show_live=True):  # show_live=True по умолчанию
+def process_and_detect(input_path, output_path, model_path, show_live=True):
     """Обрабатывает видео и применяет YOLO с отображением в реальном времени"""
     if not os.path.exists(model_path):
         raise FileNotFoundError(f"Файл модели не найден: {model_path}")
@@ -27,9 +28,11 @@ def process_and_detect(input_path, output_path, model_path, show_live=True):  # 
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
     # Инициализация VideoWriter (если output_path указан)
-    if output_path:
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        out = cv2.VideoWriter(output_path, fourcc, fps, (width, height), isColor=True)
+    if not output_path:
+        logging.warning("А куда выводить?")
+
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v') # type: ignore
+    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height), isColor=True)
 
     preprocess = transforms.Compose([
         transforms.ToPILImage(),
@@ -44,12 +47,12 @@ def process_and_detect(input_path, output_path, model_path, show_live=True):  # 
                 break
             
             # 1. Предобработка
-            negative = 255 - frame
-            gray = cv2.cvtColor(negative, cv2.COLOR_BGR2GRAY)
-            gray_3ch = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+            # negative = 255 - frame
+            # gray = cv2.cvtColor(negative, cv2.COLOR_BGR2GRAY)
+            # gray_3ch = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
             
             # 2. Детекция
-            results = model.predict(gray_3ch, imgsz=640, conf=0.5)
+            results = model.predict(frame, imgsz=640, conf=0.5)
             annotated_frame = results[0].plot()  # Автоматическая визуализация
             
             # Показываем результат
@@ -72,7 +75,7 @@ def main():
     parser = argparse.ArgumentParser(description='Детекция утечек с отображением в реальном времени')
     parser.add_argument('--input', required=True, help='Путь к видеофайлу')
     parser.add_argument('--output', help='Путь для сохранения (необязательно)')
-    parser.add_argument('--model', default='leak_detectorv0.1.pt', help='Путь к модели YOLO')
+    parser.add_argument('--model', default='models/leak_detectorv0.1.pt', help='Путь к модели YOLO')
     args = parser.parse_args()
 
     # Проверка и нормализация путей
