@@ -1,6 +1,7 @@
-/.venv/
+/.venv
 .env
 /app/__pycache__
 /uploads
 /models/__pycache__
 /.vscode
+/videos

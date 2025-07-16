@@ -1,15 +1,15 @@
-import logging
 import os
-from types import CoroutineType
 from typing import Generator
 import uuid
 from cv2.typing import MatLike
 import cv2
-from fastapi import UploadFile, WebSocket
+from fastapi import UploadFile
 from fastapi.responses import JSONResponse
 from ultralytics import YOLO
+from numpy import ndarray
+import numpy as np
 
-from models.segmentation_result import SegmentationResult
+from app.schemas import SegmentationResponse
 
 segmentation_model = YOLO()
 segmentation_model_path = 'models/leak_detectorv0.1.pt'
@@ -29,7 +29,7 @@ async def upload_video(file: UploadFile):
         "total_frames": total_frames
     })
 
-def process_file(video_id: str) -> Generator[SegmentationResult]:
+def process_file(video_id: str) -> Generator[SegmentationResponse]:
     segmentation_model = load_model()
     
     file_path = f"uploads/{video_id}.mp4"
@@ -46,8 +46,15 @@ def process_file(video_id: str) -> Generator[SegmentationResult]:
             if not ret:
                 break
             # frame = prepare_frame(frame) # если загружать не "ИК" видос
-            results = segmentation_model.predict(frame, imgsz=640, conf=0.5)
-            yield SegmentationResult(i)
+            results = segmentation_model.predict(frame, imgsz=640, conf=0.4)
+
+            mask_points: ndarray = np.empty((0, 2), dtype=int)
+            masks = results[0].masks
+
+            if masks:
+                mask_points = masks[0].xy[0].astype(int)
+
+            yield SegmentationResponse(frame_index=i, mask_points=mask_points)
     except Exception as e:
         raise e
     finally:

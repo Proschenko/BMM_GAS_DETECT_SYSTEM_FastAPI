@@ -22,9 +22,9 @@ async def websocket_endpoint(websocket: WebSocket, video_id: str):
 
     try:
         for res in serv.process_file(video_id):
-            await websocket.send_text('ok')
+            await websocket.send_json(res.model_dump_json())
 
-            await asyncio.sleep(1)  # Пауза 1 секунда
+            # await asyncio.sleep(1)  # Пауза 1 секунда
             
     except Exception as e:
         await websocket.send({
