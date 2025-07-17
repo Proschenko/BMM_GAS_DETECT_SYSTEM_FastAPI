@@ -28,7 +28,6 @@ async def upload_video(file: UploadFile = File(...)):
     if not success:
         return {"status": "error", "message": "Ошибка обработки видео"}
 
-    # <-- Возвращаем endpoint, а не физический путь
     return {
         "status": "success",
         "output_video": f"/video/{output_filename}"
